@@ -1,0 +1,222 @@
+Package SupermarketManagementSystem
+
+/******************************************************** 
+   System definition  
+*********************************************************/ 
+
+System SMS "SupermarketManagementSystem (Application Level)" : Application [ isFinal   
+  description 
+"
+The SupermarketManagementSystem allows the management of products, customers, and sales in a supermarket. The system provides users with the ability to manage inventory and customer profiles, track customer purchases and generating alerts. 
+The system has different user roles such as administrators, cashiers, and inventory managers.
+The system shall allow the user to generate receipts for each transaction, record payments and update the inventory in real time.
+User-inventory managers will handle the stock of products. They are responsible for adding new products, updating stock quantities, and tracking low inventory levels. The system shall alert inventory managers when stock is below the defined threshold.
+"
+]
+
+/********************************************************
+   DataEnumerations
+*********************************************************/
+DataEnumeration e_ProductStockLevel values (
+    InStock "In Stock",
+    LowStock "Low Stock",
+    OutOfStock "Out of Stock"
+)
+
+/********************************************************
+   DataEntities
+*********************************************************/
+DataEntity e_Product "Product" : Master [
+    attribute ID : Integer [constraints (PrimaryKey)]
+    attribute Name : String(100) [constraints (NotNull)]
+    attribute Category : String(50) [constraints (NotNull)]
+    attribute Price : Decimal(10.2) [constraints (NotNull)]
+    attribute StockLevel : DataEnumeration e_ProductStockLevel [constraints (NotNull)]
+    attribute StockPercentage : Decimal(5.2) [constraints (NotNull)]
+    attribute MaxStock : Integer [constraints (NotNull)]
+    attribute CurrentStock : Integer [constraints (Derived (StockPercentage * MaxStock / 100))]
+    constraints (Check(ckPercentage "StockPercentage >= 0 and StockPercentage <= 100"))
+    description "Products available in the supermarket"
+]
+
+DataEntity e_Customer "Customer" : Master [
+    attribute ID : Integer [constraints (PrimaryKey)]
+    attribute Name : String(50) [constraints (NotNull)]
+    attribute email : Email [constraints (NotNull Unique)]
+    attribute Phone : String(15) [constraints (Unique)]
+    attribute Address : String(100) [constraints (NotNull)]
+    description "Customers of the supermarket"
+]
+
+DataEntity e_Order "Order" : Master [
+    attribute ID : Integer [constraints (PrimaryKey)]
+    attribute CustomerID : Integer [constraints (NotNull ForeignKey (e_Customer))]
+    attribute OrderDate : Date [constraints (NotNull)]
+    attribute TotalAmount : Decimal(10.2) [constraints (NotNull)]
+    description "Orders placed by customers"
+]
+
+DataEntity e_Inventory "Inventory" : Master [
+    attribute ProductID : Integer [constraints (PrimaryKey ForeignKey (e_Product))]
+    attribute Quantity : Integer [constraints (NotNull)]
+    attribute LastUpdated : Date [constraints (NotNull)]
+    description "Inventory details for products"
+]
+
+DataEntity e_Employee "Employee" : Master [
+    attribute ID : Integer [constraints (PrimaryKey)]
+    attribute Name : String(50) [constraints (NotNull)]
+    attribute Position : String(50) [constraints (NotNull)]
+    attribute email : Email [constraints (NotNull Unique)]
+    attribute Phone : String(15) [constraints (Unique)]
+    description "Employees working in the supermarket"
+]
+
+DataEntity e_Supermarket "Supermarket" : Master [
+    attribute ID : Integer [constraints (PrimaryKey)]
+    attribute Name : String(100) [constraints (NotNull)]
+    attribute Location : String(100) [constraints (NotNull)]
+    attribute ManagerID : Integer [constraints (NotNull ForeignKey (e_Employee))]
+    description "Supermarkets and their respective managers"
+]
+
+DataEntity e_Transactions "Transactions" : Document [
+    attribute ID : Integer [constraints (PrimaryKey)]
+    attribute ProductID : Integer [constraints (NotNull ForeignKey (e_Product))]
+    attribute CustomerID : Integer [constraints (NotNull ForeignKey (e_Customer))]
+    attribute TransactionDate : Date [constraints (NotNull)]
+    attribute Amount : Decimal(10.2) [constraints (NotNull)]
+    description "Records of transactions made in the supermarket"
+]
+
+/********************************************************
+   DataEntityClusters
+*********************************************************/
+DataEntityCluster ec_Product "Products" : Master [
+    main e_Product
+    description "Cluster for managing product-related data"
+]
+DataEntityCluster ec_Customer "Customers" : Master [
+    main e_Customer
+    description "Cluster for managing customer-related data"
+]
+DataEntityCluster ec_Order "Orders" : Document [
+    main e_Order
+    uses e_Customer
+    description "Cluster for managing order-related data"
+]
+DataEntityCluster ec_Employee "Employees" : Master [
+    main e_Employee
+    description "Cluster for managing employee-related data"
+]
+DataEntityCluster ec_Supermarket "Supermarkets" : Master [
+    main e_Supermarket
+    uses e_Employee
+    description "Cluster for managing supermarket-related data"
+]
+DataEntityCluster ec_Transactions "Transactions" : Document [
+    main e_Transactions
+    uses e_Product, e_Customer
+    description "Cluster for managing transaction-related data"
+]
+
+/********************************************************
+   ActionTypes
+*********************************************************/
+ActionType aClose [description "Close the interaction space"]
+ActionType aCancel [description "Cancel the interaction space"]
+ActionType aConfirm [description "Confirm the interaction space"]
+ActionType aSearch [description "Define a set of DataEntity items from a search query"]
+ActionType aFilter [description "Define a set of DataEntity items from a logical filter query"]
+ActionType aPrint [description "Print one or more DataEntity items"]
+ActionType aSend [description "Send one or more DataEntity items (via a not defined process)"]
+
+ActionType aProcessTransaction [description "Process a transaction in the supermarket"]
+ActionType aUpdateStockLevels [description "Update stock levels for products"]
+
+/********************************************************
+   Actors
+*********************************************************/
+Actor a_Customer : User [description "A customer who purchases products from the supermarket"]
+Actor a_Cashier: User [description "A cashier who processes transactions and assists customers at checkout"]
+Actor a_InventoryManager: User [description "An inventory manager who oversees stock levels and product availability"]
+Actor a_StoreManager: User [description "A store manager who manages overall store operations and staff"]
+Actor a_Supplier: User [description "A supplier who provides products to the supermarket"]
+
+/********************************************************
+   Use cases
+*********************************************************/
+UseCase uc_PurchaseProducts "Purchase Products" : EntityCreate [
+    actorInitiates a_Customer
+    dataEntity ec_Order
+    actions aConfirm, aCancel
+    description "A customer purchases products from the supermarket"
+]
+
+UseCase uc_ManageInventory "Manage Inventory" : EntitiesManage [
+    actorInitiates a_InventoryManager
+    dataEntity ec_Product
+    extensionPoints xp_CreateProduct, xp_ReadProduct, xp_UpdateProduct, xp_DeleteProduct
+    description "An inventory manager updates stock levels and manages product availability"
+]
+
+UseCase uc_CreateProduct "Create Product" : EntityCreate [
+    actorInitiates a_InventoryManager
+    dataEntity ec_Product
+    actions aConfirm, aCancel
+    extends uc_ManageInventory onExtensionPoint xp_CreateProduct
+    description "Create a new product in the inventory"
+]
+
+UseCase uc_ReadProduct "Read Product" : EntityRead [
+    actorInitiates a_InventoryManager
+    dataEntity ec_Product
+    actions aClose
+    extends uc_ManageInventory onExtensionPoint xp_ReadProduct
+    description "Read product details from the inventory"
+]
+
+UseCase uc_UpdateProduct "Update Product" : EntityUpdate [
+    actorInitiates a_InventoryManager
+    dataEntity ec_Product
+    actions aConfirm, aCancel
+    extends uc_ManageInventory onExtensionPoint xp_UpdateProduct
+    description "Update existing product details in the inventory"
+]
+
+UseCase uc_DeleteProduct "Delete Product" : EntityDelete [
+    actorInitiates a_InventoryManager
+    dataEntity ec_Product
+    actions aConfirm, aCancel
+    extends uc_ManageInventory onExtensionPoint xp_DeleteProduct
+    description "Delete a product from the inventory"
+]
+
+UseCase uc_CheckoutCustomer "Checkout Customer" : EntityUpdate [
+    actorInitiates a_Cashier
+    dataEntity ec_Order
+    actions aConfirm, aPrint
+    description "A cashier processes a customer's purchase at checkout"
+]
+
+UseCase uc_OverseeStoreOperations "Oversee Store Operations" : EntitiesManage [
+    actorInitiates a_StoreManager
+    dataEntity ec_Supermarket
+    actions aRead, aUpdate, aSend
+    description "A store manager oversees store operations and manages staff"
+]
+
+UseCase uc_SupplyProducts "Supply Products" : EntityCreate [
+    actorInitiates a_Supplier
+    dataEntity ec_Product
+    actions aConfirm, aSend
+    description "A supplier provides products to the supermarket"
+]
+
+UseCase uc_SendLowStockAlert "Send Low Stock Alert" : EntitiesInteropSendMessage [
+    actorInitiates a_InventoryManager
+    dataEntity ec_Product
+    precondition "Product.StockLevel in {'LowStock'}"
+    actions aSend
+    description "Send an alert to the inventory manager when products are low on stock"
+]
